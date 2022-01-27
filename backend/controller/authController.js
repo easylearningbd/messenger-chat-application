@@ -1,7 +1,8 @@
 const formidable = require('formidable');
 const validator = require('validator');
 const registerModel = require('../models/authModel');
-
+const fs = require('fs');
+const bcrypt = require('bcrypt');
 
 module.exports.userRegister = (req, res) => {
 
@@ -53,24 +54,36 @@ module.exports.userRegister = (req, res) => {
 
           const newPath = __dirname + `../../../frontend/public/image/${files.image.originalFilename}`;
 
-          try {
-               const checkUser = await registerModel.findOne({
-                    email:email
-               });
-               if(checkUser) {
-                    res.status(404).json({
-                         error: {
-                              errorMessage : ['Your email already exited']
-                         }
-                    })
-               }
-
-          } catch (error) {
-               res.status(500).json({
+     try {
+          const checkUser = await registerModel.findOne({
+               email:email
+          });
+          if(checkUser) {
+               res.status(404).json({
                     error: {
-                         errorMessage : ['Interanl Server Error']
+                         errorMessage : ['Your email already exited']
                     }
                })
+          }else{
+               fs.copyFile(files.image.filepath,newPath, async(error) => {
+                    if(!error) {
+                         const userCreate = await registerModel.create({
+                              userName,
+                              email,
+                              password : await bcrypt.hash(password,10),
+                              image: files.image.originalFilename
+                         })
+                         console.log('registration Complete successfully')
+                    }
+               })
+          }
+
+     } catch (error) {
+          res.status(500).json({
+               error: {
+                    errorMessage : ['Interanl Server Error']
+               }
+          })
 
           }
 
