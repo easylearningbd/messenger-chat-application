@@ -113,11 +113,32 @@ const options = { expires : new Date(Date.now() + process.env.COOKIE_EXP * 24 * 
            } 
 
                
-          }
- 
-
-
+          } 
           
      }) // end Formidable  
     
+}
+
+module.exports.userLogin = async (req,res) => {
+      const error = [];
+      const {email,password} = req.body;
+      if(!email){
+          error.push('Please provide your Email');
+     }
+     if(!password){
+          error.push('Please provide your Passowrd');
+     }
+     if(email && !validator.isEmail(email)){
+          error.push('Please provide your Valid Email');
+     }
+     if(error.length > 0){
+          res.status(400).json({
+               error:{
+                    errorMessage : error
+               }
+          })
+     }else {
+          
+     }
+
 }
