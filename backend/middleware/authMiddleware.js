@@ -12,5 +12,5 @@ module.exports.authMiddleware = async(req,res,next) => {
                     errorMessage: ['Please Loing First']
                }
           })
-     }
+     } 
 }
