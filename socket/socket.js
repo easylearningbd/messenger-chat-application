@@ -46,6 +46,18 @@ io.on('connection',(socket)=>{
           
      })
 
+     socket.on('typingMessage',(data)=>{
+          const user = findFriend(data.reseverId);
+          if(user !== undefined){
+               socket.to(user.socketId).emit('typingMessageGet',{
+                    senderId : data.senderId,                   
+                    reseverId :  data.reseverId,
+                    msg : data.msg                    
+                     
+               })
+          }
+     })
+
 
 
      socket.on('disconnect',() =>{
