@@ -49,7 +49,7 @@ module.exports.getFriends = async (req, res) => {
                     fndInfo : friendGet[i],
                     msgInfo : lmsg
                }]
-              
+               
           }
 
           // const filter = friendGet.filter(d=>d.id !== myId );
