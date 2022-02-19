@@ -4,7 +4,7 @@ const io = require('socket.io')(8000,{
           methods : ['GET','POST']
      }
 })
-
+ 
 let users = [];
 const addUser = (userId,socketId,userInfo) => {
      const checkUser = users.some(u=> u.userId === userId );
@@ -49,7 +49,12 @@ io.on('connection',(socket)=>{
                socket.to(user.socketId).emit('msgDelivaredResponse', msg)
           }          
      })
-
+     socket.on('seen',data =>{
+          const user = findFriend(data.senderId);          
+          if(user !== undefined){
+               socket.to(user.socketId).emit('seenSuccess', data)
+          } 
+     })
 
 
      socket.on('typingMessage',(data)=>{
