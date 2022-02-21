@@ -32,6 +32,16 @@ io.on('connection',(socket)=>{
      socket.on('addUser',(userId,userInfo)=>{
           addUser(userId,socket.id,userInfo);
           io.emit('getUser',users);
+
+     const us = users.filter(u=>u.userId !== userId);
+     const con = 'new_user_add';
+     for(var i = 0; i <us.length; i++ ){
+          socket.to(us[i].socketId).emit('new_user_add',con);
+     }
+
+
+
+
      });
      socket.on('sendMessage',(data)=>{
           const user = findFriend(data.reseverId);
