@@ -23,6 +23,11 @@ const registerSchema = new Schema(
       required: true,
       select: false,
     },
+    status: {
+      type: String,
+      required: false,
+      default: 'created',
+    },
     verified: {
       type: Boolean,
       required: false,

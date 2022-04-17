@@ -5,6 +5,12 @@ module.exports = Object.freeze({
     customer: 'customer',
   },
 
+  status: {
+    created: 'created',
+    active: 'active',
+    deleted: 'deleted',
+  },
+
   common: {
     notFound: 'not_found',
     serverError: 'internal_server_error',
