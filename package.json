@@ -6,7 +6,13 @@
   "scripts": {
     "server": "nodemon backend/server.js",
     "client": "npm start --prefix frontend",
-    "dev": "concurrently \" npm run server\" \" npm run client \""
+    "dev": "concurrently \" npm run server\" \" npm run client \"",
+    "prettier": "prettier --check .",
+    "prettier:fix": "prettier --write .",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "format": "npm run prettier:fix && npm run lint",
+    "format:fix": "npm run prettier:fix && npm run lint:fix"
   },
   "keywords": [],
   "author": "",
@@ -23,5 +29,10 @@
     "mongoose": "^6.1.8",
     "nodemon": "^2.0.15",
     "validator": "^13.7.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.13.0",
+    "eslint-config-prettier": "^8.5.0",
+    "prettier": "^2.6.2"
   }
 }

@@ -1,199 +1,305 @@
-const formidable = require('formidable');
 const validator = require('validator');
-const registerModel = require('../models/authModel');
-const fs = require('fs');
+const userAuthModel = require('../models/authModel');
+const data = require('../data/messageStore');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const console = require('console');
- 
 
-module.exports.userRegister = (req, res) => {
+const uTypes = data.types;
 
-     const form = formidable();
-     form.parse(req, async (err, fields, files) => {
+let decodeTokenData = (token) => {
+  try {
+    let tokenData = jwt.verify(token, process.env.SECRET);
+    return tokenData;
+  } catch (err) {
+    return false;
+  }
+  
+}
 
-     const {
-          userName, email, password,confirmPassword
-     } = fields;
+module.exports.userRegister = async (req, res) => {
+  // for registering new agents / admin if admin not present
+  const { userName, name, email, type, password, confirmPassword } = req.body;
+  const error = [];
 
-     const {image} = files;
-     const error = [];
+  if (!userName || userName.length < 6 || userName.indexOf(' ') !== -1) {
+    error.push(data.authErrors.invalidUName);
+  }
 
-     if(!userName){
-          error.push('Please provide your user name');
-     }
-     if(!email){
-          error.push('Please provide your Email');
-     }
-     if(email && !validator.isEmail(email)){
-          error.push('Please provide your Valid Email');
-     }
-     if(!password){
-          error.push('Please provide your Password');
-     }
-     if(!confirmPassword){
-          error.push('Please provide your confirm Password');
-     }
-     if(password && confirmPassword && password !== confirmPassword){
-          error.push('Your Password and Confirm Password not same');
-     }
-     if(password && password.length < 6){
-          error.push('Please provide password mush be 6 charecter');
-     }
-     if(Object.keys(files).length === 0){
-          error.push('Please provide user image');
-     }
-     if(error.length > 0){
-          res.status(400).json({
-               error:{
-                    errorMessage : error
-               }
-          })
-     } else {
-          const getImageName = files.image.originalFilename;
-          const randNumber = Math.floor(Math.random() * 99999 );
-          const newImageName = randNumber + getImageName;
-          files.image.originalFilename = newImageName;
+  if (!name || /\d/.test(name)) {
+    error.push(data.authErrors.invalidName);
+  }
 
-          const newPath = __dirname + `../../../frontend/public/image/${files.image.originalFilename}`;
+  if (!email || !validator.isEmail(email)) {
+    error.push(data.authErrors.invalidEmail);
+  }
 
-     try {
-          const checkUser = await registerModel.findOne({
-               email:email
+  if (
+    !password ||
+    !confirmPassword ||
+    (password !== confirmPassword && password.length < 6)
+  ) {
+    error.push(data.authErrors.invalidPassword);
+  }
+
+  if (!type || type === uTypes.customer) {
+    error.push(data.authErrors.invalidType);
+  }
+
+  if (error.length > 0) {
+    res.status(400).json({
+      error: {
+        code: error,
+      },
+    });
+  } else {
+    try {
+      const checkAdmin = await userAuthModel.findOne({
+        type: uTypes.admin,
+      });
+      if (type === uTypes.admin && checkAdmin) {
+        throw data.authErrors.userExists;
+      }
+
+      if (type === uTypes.agent && !checkAdmin) {
+        throw data.authErrors.adminMissing;
+      }
+
+      const checkUser = await userAuthModel.findOne({
+        email: email,
+      });
+      if (checkUser) {
+        res.status(404).json({
+          error: {
+            code: data.authErrors.userExists,
+          },
+        });
+      } else {
+        const userCreate = await userAuthModel.create({
+          userName,
+          email,
+          name,
+          uType: type,
+          password: await bcrypt.hash(password, 10),
+          verified: type === uTypes.admin ? true : false,
+        });
+
+        if (userCreate.uType === uTypes.admin) {
+          const token = jwt.sign(
+            {
+              id: userCreate._id,
+              email: userCreate.email,
+              name: userCreate.name,
+              type: userCreate.uType,
+              registerTime: userCreate.createdAt,
+            },
+            process.env.SECRET,
+            {
+              expiresIn: process.env.TOKEN_EXP,
+            }
+          );
+
+          const options = {
+            expires: new Date(
+              Date.now() + process.env.COOKIE_EXP * 24 * 60 * 60 * 1000
+            ),
+          };
+
+          res
+            .status(201)
+            .cookie('authToken', token, options)
+            .json({
+              success: true,
+              message: data.authSuccess.userAdded,
+              detail: {
+                userId: userCreate._id,
+                registerTime: userCreate.createdAt,
+              },
+              token,
+            });
+        } else {
+          res.status(200).json({
+            success: true,
+            message: data.authSuccess.userAdded,
+            detail: userCreate.userName,
+            description: 'user created. please login',
           });
-          if(checkUser) {
-               res.status(404).json({
-                    error: {
-                         errorMessage : ['Your email already exited']
-                    }
-               })
-          }else{
-               fs.copyFile(files.image.filepath,newPath, async(error) => {
-                    if(!error) {
-                         const userCreate = await registerModel.create({
-                              userName,
-                              email,
-                              password : await bcrypt.hash(password,10),
-                              image: files.image.originalFilename
-                         });
+        }
+      }
+    } catch (err) {
+      res.status(500).json({
+        error: {
+          code: data.common.serverError,
+          detail: err,
+        },
+      });
+    }
+  }
+};
 
-                         const token = jwt.sign({
-                              id : userCreate._id,
-                              email: userCreate.email,
-                              userName: userCreate.userName,
-                              image: userCreate.image,
-                              registerTime : userCreate.createdAt
-                         }, process.env.SECRET,{
-                              expiresIn: process.env.TOKEN_EXP
-                         }); 
+module.exports.userLogin = async (req, res) => {
+  const error = [];
+  const { email, userName, type, password } = req.body;
 
-const options = { expires : new Date(Date.now() + process.env.COOKIE_EXP * 24 * 60 * 60 * 1000 )}
+  if (!email || !validator.isEmail(email)) {
+    error.push(data.authErrors.invalidEmail);
+  }
 
-     res.status(201).cookie('authToken',token, options).json({
-          successMessage : 'Your Register Successful',token
-     })
+  if (!type || type === uTypes.customer) {
+    error.push(data.authErrors.invalidType);
+  } else if (type === uTypes.admin) {
+    if (!userName) {
+      error.push(data.authErrors.invalidUName);
+    }
+  }
 
-                          
-                    } else {
-                         res.status(500).json({
-                              error: {
-                                   errorMessage : ['Interanl Server Error']
-                              }
-                         })
-                    }
-               })
-          }
+  if (!password) {
+    error.push(data.authErrors.invalidPassword);
+  }
 
-     } catch (error) {
-          res.status(500).json({
-               error: {
-                    errorMessage : ['Interanl Server Error']
-               }
-          })
+  if (error.length > 0) {
+    res.status(400).json({
+      error: {
+        code: data.common.serverError,
+        errorMessage: error,
+      },
+    });
+  } else {
+    try {
+      const findFilter =
+        type === uTypes.admin
+          ? {
+              email: email,
+              userName: userName,
+            }
+          : {
+              email: email,
+            };
+      const checkUser = await userAuthModel
+        .findOne(findFilter)
+        .select('+password');
 
-           } 
+      if (checkUser) {
+        const matchPassword = await bcrypt.compare(
+          password,
+          checkUser.password
+        );
 
-               
-          } 
-          
-     }) // end Formidable  
-    
-}
+        if (matchPassword && checkUser.verified) {
+          const token = jwt.sign(
+            {
+              id: checkUser._id,
+              email: checkUser.email,
+              type: checkUser.uType,
+              registerTime: checkUser.createdAt,
+            },
+            process.env.SECRET,
+            {
+              expiresIn: process.env.TOKEN_EXP,
+            }
+          );
+          const options = {
+            expires: new Date(
+              Date.now() + process.env.COOKIE_EXP * 24 * 60 * 60 * 1000
+            ),
+          };
 
-module.exports.userLogin = async (req,res) => {
-      const error = [];
-      const {email,password} = req.body;
-      if(!email){
-          error.push('Please provide your Email');
-     }
-     if(!password){
-          error.push('Please provide your Passowrd');
-     }
-     if(email && !validator.isEmail(email)){
-          error.push('Please provide your Valid Email');
-     }
-     if(error.length > 0){
+          res
+            .status(200)
+            .cookie('authToken', token, options)
+            .json({
+              success: true,
+              message: data.authSuccess.userLogin,
+              detail: {
+                userId: checkUser._id,
+                userName: checkUser.userName,
+                email: checkUser.email,
+              },
+              token,
+            });
+        } else {
           res.status(400).json({
-               error:{
-                    errorMessage : error
-               }
-          })
-     }else {
+            error: {
+              code: checkUser.verified
+                ? data.authErrors.verifyFailed
+                : data.authErrors.invalidPassword,
+            },
+          });
+        }
+      } else {
+        res.status(400).json({
+          error: {
+            code: data.authErrors.userNotFound,
+          },
+        });
+      }
+    } catch (err) {
+      res.status(404).json({
+        error: {
+          code: data.common.serverError,
+          detail: err,
+        },
+      });
+    }
+  }
+};
 
-          try{
-               const checkUser = await registerModel.findOne({
-                    email:email
-               }).select('+password');
+module.exports.userLogout = (req, res) => {
+  const checkUser = decodeTokenData(req.cookies.authToken);
+  if (checkUser){
+    // update log data with logout time
+    res.status(200).cookie('authToken', '').json({
+      success: true,
+    });
+  } else {
+    res.status(400).json({
+      error: {
+        code: data.authErrors.userNotFound
+      }
+    });
+  }
+};
 
-               if(checkUser){
-                    const matchPassword = await bcrypt.compare(password, checkUser.password );
+module.exports.userVerify = async (req, res) => {
+  // if admin, will verify all IDs passed under verifyList (for agent verification)
+  // customer will be verified once chat is accepted
+  const { verifyList } = req.body;
+  let verifiedList = [];
+  try {
+    const checkUser = decodeTokenData(req.cookies.authToken);
 
-                    if(matchPassword) {
-                         const token = jwt.sign({
-                              id : checkUser._id,
-                              email: checkUser.email,
-                              userName: checkUser.userName,
-                              image: checkUser.image,
-                              registerTime : checkUser.createdAt
-                         }, process.env.SECRET,{
-                              expiresIn: process.env.TOKEN_EXP
-                         }); 
-      const options = { expires : new Date(Date.now() + process.env.COOKIE_EXP * 24 * 60 * 60 * 1000 )}
-
-     res.status(200).cookie('authToken',token, options).json({
-          successMessage : 'Your Login Successful',token
-     })
-
-                    } else{
-                         res.status(400).json({
-                              error: {
-                                   errorMessage : ['Your Password not Valid']
-                              }
-                         })
-                    }
-               } else{
-                    res.status(400).json({
-                         error: {
-                              errorMessage : ['Your Email Not Found']
-                         }
-                    })
-               }
-                
-
-          } catch{
-               res.status(404).json({
-                    error: {
-                         errorMessage : ['Internal Sever Error']
-                    }
-               })
-
-          }
-     }
-
-}
-
-module.exports.userLogout = (req,res) => {
-     res.status(200).cookie('authToken', '').json({
-          success : true
-     })
-}
+    if (checkUser) { //user token exists. 
+      if (checkUser.type === uTypes.admin) { // verify all IDs under verifyList
+        verifyList.forEach(async (agentId) => {
+          const verifyStatus = await userAuthModel.findOneAndUpdate({
+            _id: agentId,
+          }, {
+            verified: true,
+          }, {
+            new: true
+          });
+          verifiedList.push(verifyStatus);
+        });
+      } else if (checkUser.type === uTypes.agent) { 
+        const verifyCust = await userAuthModel.findOneAndUpdate({
+          _id: verifyList[0]
+        }, {
+          verified: true,
+        }, {
+          new: true
+        });
+        verifiedList.push(verifyCust);
+      }
+      res.status(200).json({
+        success: true,
+        message: data.authSuccess.userVerified,
+        detail: verifiedList
+      });
+    }
+  } catch (err) {
+    res.status(400).json({
+      error: {
+        code: data.authErrors.verifyFailed,
+      },
+    })
+  }
+};
