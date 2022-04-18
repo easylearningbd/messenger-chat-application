@@ -23,6 +23,7 @@ module.exports = Object.freeze({
     invalidEmail: 'email_invalid',
     invalidPassword: 'password_invalid',
     incorrectPassword: 'password_incorrect',
+    invalidPincode: 'pincode_invalid',
     invalidType: 'type_invalid',
     userExists: 'user_exists',
     deleteFailed: 'delete_failed',
@@ -39,5 +40,18 @@ module.exports = Object.freeze({
     tokenDeleted: 'token_deleted',
     custDeleted: 'cust_deleted',
     userVerified: 'user_verified',
+  },
+
+  msgErrors: {
+    presetNotFound: 'preset_not_found',
+    presetPresent: 'preset_present',
+    presetInvalid: 'preset_invalid',
+    sendFailed: 'send_failed',
+    sendBlocked: 'send_blocked',
+  },
+
+  msgSuccess: {
+    presetSaved: 'preset_saved',
+    presetList: 'preset_data',
   },
 });

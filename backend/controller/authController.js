@@ -85,6 +85,7 @@ module.exports.userRegister = async (req, res) => {
               type: userCreate.uType,
               verified: userCreate.verified,
               status: userCreate.status,
+              verifiedAdmin: true,
               registerTime: userCreate.createdAt,
             },
             process.env.SECRET,
@@ -179,36 +180,37 @@ module.exports.userLogin = async (req, res) => {
           checkUser.password
         );
 
-        if (matchPassword && checkUser.verified && checkUser.status === uStatus.active) {
-          const token = jwt.sign(
-            {
-              id: checkUser._id,
-              userName: checkUser.userName,
-              name: checkUser.name,
-              type: checkUser.uType,
-              verified: checkUser.verified,
-              status: checkUser.status,
-              registerTime: checkUser.createdAt,
-            },
-            process.env.SECRET,
-            {
-              expiresIn: process.env.TOKEN_EXP,
-            }
-          );
+        if (
+          matchPassword &&
+          checkUser.verified &&
+          checkUser.status === uStatus.active
+        ) {
+          let tokenData = {
+            id: checkUser._id,
+            userName: checkUser.userName,
+            name: checkUser.name,
+            type: checkUser.uType,
+            verified: checkUser.verified,
+            status: checkUser.status,
+            registerTime: checkUser.createdAt,
+          };
+          if (checkUser.uType === uTypes.admin) {
+            tokenData.verifiedAdmin = true;
+          }
+          const token = jwt.sign(tokenData, process.env.SECRET, {
+            expiresIn: process.env.TOKEN_EXP,
+          });
           const options = {
             expires: new Date(
               Date.now() + process.env.COOKIE_EXP * 24 * 60 * 60 * 1000
             ),
           };
 
-          res
-            .status(200)
-            .cookie('authToken', token, options)
-            .json({
-              success: true,
-              message: data.authSuccess.userLogin,
-              token,
-            });
+          res.status(200).cookie('authToken', token, options).json({
+            success: true,
+            message: data.authSuccess.userLogin,
+            token,
+          });
         } else {
           res.status(400).json({
             error: {
@@ -372,7 +374,10 @@ module.exports.userChangePassword = async (req, res) => {
 
         if (!matchPassword) throw data.authErrors.invalidPassword;
 
-        if (checkUser.type === uTypes.admin && userName !== checkUser.userName) {
+        if (
+          checkUser.type === uTypes.admin &&
+          userName !== checkUser.userName
+        ) {
           //trying to remove admin account without providing userName
           throw data.authErrors.adminMissing;
         }
@@ -490,75 +495,118 @@ module.exports.userDelete = async (req, res) => {
 module.exports.custCreate = async (req, res) => {
   //create a temporary user
   const chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
-  const { name, pincode } = req;
-  const userName =
-    name +
-    pincode +
-    chars[Math.floor(Math.random() * 26)] +
-    Math.random().toString(36).substring(2, 8);
-  const email =
-    chars[Math.floor(Math.random() * 26)] +
-    Math.random().toString(36).substring(2, 11) +
-    '@customer.com';
-  const password =
-    chars[Math.floor(Math.random() * 26)] +
-    Math.random().toString(36).substring(2, 11);
-  const uType = 'consumer';
-  const custCreate = await userAuthModel.create({
-    userName,
-    name,
-    email,
-    uType,
-    password: await bcrypt.hash(password, 10),
-    verified: false,
-    status: uStatus.created,
-  });
+  const { name, pincode } = req.body;
+  const errors = [];
 
-  const token = jwt.sign(
-    {
-      id: custCreate._id,
-      userName: custCreate.userName,
-      name: custCreate.name,
-      type: custCreate.uType,
-      verified: custCreate.verified,
-      status: custCreate.status,
-      registerTime: custCreate.createdAt,
-    },
-    process.env.SECRET,
-    {
-      expiresIn: process.env.TOKEN_EXP,
+  try {
+    if (!name || /\d/.test(name)) {
+      errors.push(data.authErrors.invalidName);
     }
-  );
 
-  const options = {
-    expires: new Date(
-      Date.now() + process.env.COOKIE_EXP * 24 * 60 * 60 * 1000
-    ),
-  };
+    if (!pincode) {
+      errors.push(data.authErrors.invalidPincode);
+    }
 
-  res.status(201).cookie('authToken', token, options).json({
-    success: true,
-    message: data.authSuccess.userAdded,
-    token,
-  });
+    if (errors.length > 0) throw errors;
+
+    const userName =
+      name +
+      pincode +
+      chars[Math.floor(Math.random() * 26)] +
+      Math.random().toString(36).substring(2, 8);
+
+    const email =
+      chars[Math.floor(Math.random() * 26)] +
+      Math.random().toString(36).substring(2, 11) +
+      '@customer.com';
+
+    const password =
+      chars[Math.floor(Math.random() * 26)] +
+      Math.random().toString(36).substring(2, 11);
+
+    const uType = uTypes.customer;
+
+    const custCreate = await userAuthModel.create({
+      userName,
+      name,
+      email,
+      uType,
+      password: await bcrypt.hash(password, 10),
+      verified: false,
+      status: uStatus.created,
+    });
+
+    if (custCreate) {
+      const token = jwt.sign(
+        {
+          id: custCreate._id,
+          userName: custCreate.userName,
+          name: custCreate.name,
+          type: custCreate.uType,
+          verified: custCreate.verified,
+          status: custCreate.status,
+          registerTime: custCreate.createdAt,
+        },
+        process.env.SECRET,
+        {
+          expiresIn: process.env.TOKEN_EXP,
+        }
+      );
+
+      const options = {
+        expires: new Date(
+          Date.now() + process.env.COOKIE_EXP * 24 * 60 * 60 * 1000
+        ),
+      };
+
+      res.status(201).cookie('authToken', token, options).json({
+        success: true,
+        message: data.authSuccess.userAdded,
+        token,
+      });
+    }
+  } catch (err) {
+    res.status(400).json({
+      error: {
+        code: data.common.serverError,
+        detail: err,
+      },
+    });
+  }
 };
 
 module.exports.userToken = async (req, res) => {
   // keep checking if user is present in the system, else delete token.
   // To be run every 60 seconds to force session to terminate if chat has ended.
   try {
-    const checkUser = await userAuthModel.findOne({
+    let filterData = {
       _id: req.myId,
       type: req.type,
-      status: req.type === uTypes.customer ? { $ne: uStatus.deleted } : uStatus.active,
-    });
+      status: '',
+    };
+    if (req.type === uTypes.customer) {
+      if (!req.verified) {
+        // if verified is false, then check if user is newly created
+        filterData.status = uStatus.created;
+      } else {
+        filterData.status = uStatus.active;
+      }
+    } else {
+      filterData.status = uStatus.active;
+    }
+    const checkUser = await userAuthModel.findOne(filterData);
     if (!checkUser) {
       res.status(200).cookie('authToken', '').json({
         success: true,
         message: data.authSuccess.tokenDeleted,
       });
+      console.log('deleted');
     } else {
-      if (checkUser.uType === uTypes.customer && (checkUser.status === uStatus.active)) {
+      if (
+        checkUser.uType === uTypes.customer &&
+        req.status === uStatus.created &&
+        checkUser.status === uStatus.active
+      ) {
         // customer chat request has been accepted by agent. Customer is now active & verified
         const token = jwt.sign(
           {
@@ -581,11 +629,16 @@ module.exports.userToken = async (req, res) => {
             Date.now() + process.env.COOKIE_EXP * 24 * 60 * 60 * 1000
           ),
         };
-      
+
         res.status(201).cookie('authToken', token, options).json({
           success: true,
           message: data.authSuccess.userAdded,
           token,
+        });
+      } else {
+        res.status(200).json({
+          success: true,
+          message: data.authSuccess.userVerified,
         });
       }
     }
@@ -603,6 +656,11 @@ module.exports.custDelete = async (req, res) => {
   //delete customerID generated after chat has ended
   const error = [];
   try {
+    console.log({
+      id: req.myId,
+      v: req.verified,
+      s: req.status,
+    });
     const checkUser = await userAuthModel.findOneAndUpdate(
       {
         _id: req.myId,
@@ -610,15 +668,19 @@ module.exports.custDelete = async (req, res) => {
       },
       {
         verified: false,
-        status: uStatus.deleted
+        status: uStatus.deleted,
+      },
+      {
+        new: true,
       }
     );
 
     if (checkUser) {
+      console.log(checkUser);
       res.status(200).cookie('authToken', '').json({
         success: true,
         message: data.authSuccess.custDeleted,
-        detail: data.authSuccess.tokenDeleted
+        detail: data.authSuccess.tokenDeleted,
       });
     } else {
       error.push(data.authErrors.userNotFound);
